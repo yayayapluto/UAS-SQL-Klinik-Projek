@@ -1,6 +1,6 @@
 # Analisis Normalisasi Basis Data Klinik Pratama
 
-Dokumen ini menyusun analisis normalisasi skema `klinik_pratama` dari bentuk tidak normal (UNF) melalui 1NF, 2NF, 3NF, hingga BCNF untuk seluruh 11 tabel final, disertai bukti query di `bukti/query-dasar-normalisasi.txt`.
+Dokumen ini menyusun analisis normalisasi skema `klinik_pratama` dari bentuk tidak normal (UNF) melalui 1NF, 2NF, 3NF, hingga BCNF untuk seluruh 11 tabel final, disertai tangkapan layar query di `bukti/01-select-dan-join-dasar.png` dan `bukti/02-agregasi-dan-dependensi.png`.
 
 ## Bentuk Awal (UNF)
 
@@ -144,7 +144,7 @@ Notasi determinan ke atribut untuk seluruh dependensi fungsional skema `klinik_p
 
 ## Bukti Query Dependensi dan Query Dasar
 
-Keluaran query pembuktian (SELECT sederhana, JOIN multi-tabel, agregasi bulanan, dan uji pelanggaran dependensi fungsional bernilai 0 baris) disimpan pada `bukti/query-dasar-normalisasi.txt`.
+Tangkapan layar keluaran query pembuktian (SELECT sederhana, JOIN multi-tabel, agregasi bulanan, dan uji pelanggaran dependensi fungsional bernilai 0 baris) disimpan pada `bukti/01-select-dan-join-dasar.png` dan `bukti/02-agregasi-dan-dependensi.png`.
 
 ## Ringkasan untuk Bab II Laporan (diserahkan ke Agit / A1)
 
