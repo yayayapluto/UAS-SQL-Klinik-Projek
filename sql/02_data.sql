@@ -1,10 +1,18 @@
 -- =====================================================================
 -- 02_data.sql
--- Pemilik : Dapa (A2)
--- Fase    : F2 data-v1
+-- Pemilik : Dapa
+-- Fase    : F1 skema-v1
 -- Butuh   : 01_struktur.sql
--- Sumber  : PRD bagian 7 dan 10, panduan A2
+-- Sumber  : PRD bagian 7 dan 10, panduan Dapa
 -- =====================================================================
+-- Bagian komentar di bawah adalah kontrak data contoh: urutan pengisian, jumlah baris,
+-- keadaan khusus, dan nilai hasil query yang tidak boleh bergeser.
+-- Pernyataan INSERT ada di bagian akhir berkas.
+--
+-- Rujukan:
+--   ../../docs/PRD.md bagian 7 dan bagian 10.
+--   ../../docs/panduan-anggota-2-normalisasi-data.md Milestone 2.
+--
 -- Daftar TODO Dapa. Ganti [ ] menjadi [x] setelah tabel terisi.
 -- [x] poli 5 baris
 -- [x] dokter 6 baris
@@ -19,6 +27,175 @@
 -- [x] pembayaran 10 baris
 -- [x] keadaan khusus: jadwal 7 penuh, obat 8 stok 5, 2 Batal, 3 belum lunas
 -- [x] nilai query Q1 sampai Q10 cocok dengan bukti
+
+-- ---------------------------------------------------------------------
+-- 1. Rujukan dan batas berkas
+-- ---------------------------------------------------------------------
+-- Tipe data, kunci primer, kunci tamu, dan constraint tidak diulang di
+-- sini. Semuanya dibaca dari ../../docs/PRD.md bagian 5 dan dari berkas
+-- 01_struktur.sql milik Farras.
+--
+-- Berkas ini hanya mengisi data. Nama tabel, nama kolom, dan nama
+-- constraint beku. Data yang ditolak constraint dilaporkan ke Farras dengan
+-- pesan galat lengkap, bukan diperbaiki dengan menghapus constraint.
+
+-- ---------------------------------------------------------------------
+-- 2. Urutan pengisian dari induk ke anak
+-- ---------------------------------------------------------------------
+-- Urutan ini mengikuti panduan Dapa Milestone 2.1 dan PRD bagian 10.
+-- Tabel anak tidak bisa diisi sebelum induknya ada, karena setiap kunci
+-- tamu harus menunjuk baris yang sudah tersimpan.
+--
+-- 1. poli. Tidak punya induk. Lima baris.
+-- 2. dokter. Butuh poli lewat fk_dokter_poli. Enam baris.
+-- 3. jadwal_praktik. Butuh dokter lewat fk_jadwal_dokter. Delapan baris.
+-- 4. pasien. Tidak punya induk. Sepuluh baris.
+-- 5. kunjungan. Butuh pasien dan jadwal lewat fk_kunjungan_pasien dan
+--    fk_kunjungan_jadwal. Empat belas baris.
+-- 6. rekam_medis. Butuh kunjungan lewat fk_rekam_kunjungan. Sepuluh baris.
+--    Kolom imt tidak diisi karena dihitung database.
+-- 7. tindakan. Tidak punya induk. Enam baris.
+-- 8. detail_tindakan. Butuh kunjungan dan tindakan. Enam belas baris.
+-- 9. obat. Tidak punya induk. Delapan baris.
+-- 10. detail_resep. Butuh rekam_medis dan obat lewat fk_detail_resep_rekam
+--     dan fk_detail_resep_obat. Dua belas baris.
+-- 11. pembayaran. Butuh kunjungan lewat fk_pembayaran_kunjungan. Sepuluh
+--     baris.
+--
+-- tindakan dan obat sebenarnya bisa diisi lebih awal karena tidak punya
+-- induk. Keduanya tetap ditulis pada urutan di atas supaya seluruh berkas
+-- mengikuti satu alur yang sama.
+
+-- ---------------------------------------------------------------------
+-- 3. Jumlah baris wajib
+-- ---------------------------------------------------------------------
+-- Tabel    Jumlah
+-- poli            5
+-- dokter          6
+-- jadwal_praktik  8
+-- pasien         10
+-- kunjungan      14
+-- rekam_medis    10
+-- tindakan        6
+-- detail_tindakan 16
+-- obat            8
+-- detail_resep   12
+-- pembayaran     10
+--
+-- Angka ini dipakai verify.sh bagian A dan tabel jumlah baris pada
+-- laporan. Setiap tabel juga harus berisi minimal lima baris, dan seluruh
+-- kunci tamu harus menunjuk baris induk yang ada.
+--
+-- Jumlah rekam_medis sepuluh karena hanya kunjungan berstatus Selesai
+-- yang diperiksa. Jumlah pembayaran sepuluh karena satu kunjungan paling
+-- banyak punya satu tagihan lewat uq_pembayaran_kunjungan, dan kunjungan
+-- Batal tidak ditagih.
+
+-- ---------------------------------------------------------------------
+-- 4. Keadaan khusus yang harus tetap ada
+-- ---------------------------------------------------------------------
+-- 1. Jadwal 7 penuh. id_jadwal 7 berkuota 4 dan sudah terisi empat
+--    kunjungan yang bukan Batal. Sisa kuota 0. Uji 4 memakai keadaan ini
+--    untuk membuktikan trg_cek_kuota_jadwal menolak pendaftaran kelima
+--    dengan pesan Kuota jadwal sudah penuh.
+--
+-- 2. Obat 8 berstok 5. id_obat 8 dipakai Uji 6 untuk membuktikan
+--    trg_cek_stok_obat menolak resep 99 botol dengan pesan Stok obat
+--    tidak cukup.
+--    Angka stok pada data contoh adalah sisa setelah seluruh baris resep
+--    di berkas ini keluar. Trigger pengurang stok baru dibuat pada
+--    03_view_trigger.sql, jadi pengurangan untuk data contoh dihitung
+--    saat angka stok disusun, bukan dijalankan otomatis.
+--
+-- 3. Dua kunjungan berstatus Batal. Status Batal tidak dihitung sebagai
+--    pemakaian kuota oleh trg_cek_kuota_jadwal dan tidak punya tagihan.
+--
+-- 4. Dua kunjungan berstatus Menunggu. verify.sh bagian C menghitung
+--    keduanya, dan sp_daftar_kunjungan menghasilkan status yang sama.
+--
+-- 5. Tiga pembayaran berstatus Belum Lunas. Ketiganya punya tanggal_bayar
+--    NULL. Q5 membaca tiga baris ini, dan verify.sh bagian C menghitung
+--    jumlahnya.
+--
+-- 6. Seluruh tanggal kunjungan berada pada Agustus sampai Oktober 2026.
+--    sp_daftar_kunjungan menolak jadwal yang tanggalnya sudah lewat,
+--    sehingga Uji 7 membuat jadwal baru bertanggal Desember 2026 sebelum
+--    mendaftarkan pasien.
+
+-- ---------------------------------------------------------------------
+-- 5. Nilai hasil query yang tidak boleh berubah
+-- ---------------------------------------------------------------------
+-- Nilai berikut berasal langsung dari data contoh. Mengubah satu baris
+-- bisa menggeser angka di laporan tanpa terlihat.
+--
+-- Q4   sisa kuota jadwal 7 sama dengan 0.
+-- Q7   pendapatan Poli Umum 274000, Poli Gigi 213000, Poli Penyakit
+--      Dalam 202000. Ketiganya di atas rata-rata.
+-- Q8   Amlodipine 5mg keluar 60 tablet dari dua resep.
+-- Q10  dr. Andi Pratama menangani 6 kunjungan dan menempati peringkat 1.
+-- View v_kunjungan_lengkap menghasilkan 14 baris.
+-- imt rekam_medis 1 bernilai 24,9 dari berat 72 kg dan tinggi 170 cm.
+--      Database menyimpan dan menampilkan 24.9, verify.sh membandingkan
+--      angka itu.
+--
+-- Acuan lain yang ikut dijaga:
+-- Q1 sepuluh baris, tertua Gilang Ramadhan 1980-02-18.
+-- Q2 enam dokter.
+-- Q3 empat belas baris.
+-- Q5 tiga tagihan belum lunas.
+-- Q6 dua pasien pernah ke Poli Anak, dan pasien tertua Gilang Ramadhan.
+-- Q9 lima Ringan, tiga Sedang, dua Berat.
+--
+-- Hasil lengkap Q1 sampai Q10 disimpan di bukti/10-kueri.txt dan menjadi
+-- pembanding resmi.
+
+-- ---------------------------------------------------------------------
+-- 6. Larangan mengubah data demi laporan
+-- ---------------------------------------------------------------------
+-- Jangan mengubah data supaya satu query terlihat lebih bagus. Data
+-- contoh adalah alat uji, bukan bahan tampilan.
+--
+-- Kalau salah satu angka pada bagian 5 harus berubah, perbarui bersamaan:
+-- 1. PRD bagian 7 dan bagian 9.
+-- 2. Panduan Dapa Milestone 2.
+-- 3. bukti/10-kueri.txt dan bukti/verify.txt.
+-- 4. Tabel hasil pada laporan.
+--
+-- Pengisian ulang aman karena reset-db.sh membuat database dari nol.
+-- 01_struktur.sql selalu membuang tabel lebih dulu, jadi berkas ini tidak
+-- perlu penjagaan duplikasi sendiri. Menjalankan ulang tanpa reset akan
+-- menabrak kunci primer dan menambah baris ganda.
+--
+-- Nilai unik pada data juga harus dipenuhi: uq_poli_nama, uq_dokter_sip,
+-- uq_dokter_email, uq_jadwal_sesi, uq_pasien_nik, uq_pasien_email,
+-- uq_kunjungan_antrean, uq_kunjungan_pasien, uq_rekam_kunjungan,
+-- uq_tindakan_nama, uq_detail_tindakan, uq_obat_nama, uq_detail_resep,
+-- dan uq_pembayaran_kunjungan.
+
+-- ---------------------------------------------------------------------
+-- Pemeriksaan
+-- ---------------------------------------------------------------------
+-- 1. bash tools/reset-db.sh
+--    Keluaran diharapkan: seluruh berkas 01 sampai 06 dieksekusi berurutan
+--    tanpa error, database klinik_pratama berisi 11 tabel, dan seluruh
+--    data contoh masuk. Jumlah baris tiap tabel harus sama dengan bagian 3.
+--
+-- 2. bash tools/verify.sh
+--    Keluaran diharapkan: Lulus: 34   Gagal: 0.
+--    Bagian A (13 pemeriksaan): 11 tabel terdaftar, 2 view terdaftar, dan
+--    setiap tabel berisi minimal 5 baris.
+--    Bagian C (6 pemeriksaan): sisa kuota jadwal 7 bernilai 0, kunjungan
+--    Batal 2, kunjungan Menunggu 2, pembayaran Belum Lunas 3, view
+--    v_kunjungan_lengkap 14 baris, dan imt rekam_medis 1 bernilai 24.9.
+--
+-- 3. Jalankan Q1 sampai Q10 dari bukti/kueri-panduan.sql, lalu bandingkan
+--    dengan bukti/10-kueri.txt.
+--    Keluaran diharapkan identik, termasuk urutan baris hasil ORDER BY.
+--
+-- 4. Pastikan urutan INSERT dari induk ke anak:
+--    grep -n 'INSERT INTO' sql/02_data.sql
+--    Keluaran diharapkan: poli, dokter, jadwal_praktik, pasien, kunjungan,
+--    rekam_medis, tindakan, detail_tindakan, obat, detail_resep, pembayaran.
 -- =====================================================================
 
 USE klinik_pratama;
@@ -27,11 +204,11 @@ USE klinik_pratama;
 -- 1. poli (5 baris)
 -- ---------------------------------------------------------------------
 INSERT INTO poli (id_poli, nama_poli, lantai) VALUES
-(1, 'Poli Umum', 1),
-(2, 'Poli Gigi', 2),
-(3, 'Poli Anak', 3),
-(4, 'Poli Penyakit Dalam', 4),
-(5, 'Poli KIA', 5);
+(1, 'Poli Umum', 'Lantai 1'),
+(2, 'Poli Gigi', 'Lantai 2'),
+(3, 'Poli Anak', 'Lantai 3'),
+(4, 'Poli Penyakit Dalam', 'Lantai 4'),
+(5, 'Poli Mata', 'Lantai 5');
 
 -- ---------------------------------------------------------------------
 -- 2. dokter (6 baris)
@@ -42,7 +219,7 @@ INSERT INTO dokter (id_dokter, id_poli, nama_dokter, no_sip, email, no_telp, tip
 (3, 2, 'drg. Citra Lestari',       'SIP-003/2024', 'citra.lestari@klinikpratama.id',  '081210000003', 'Spesialis'),
 (4, 3, 'dr. Dewi Anggraini, Sp.A', 'SIP-004/2024', 'dewi.anggraini@klinikpratama.id', '081210000004', 'Spesialis'),
 (5, 4, 'dr. Eko Prasetyo, Sp.PD',  'SIP-005/2024', 'eko.prasetyo@klinikpratama.id',   '081210000005', 'Spesialis'),
-(6, 5, 'dr. Fajar Nugroho',        'SIP-006/2024', 'fajar.nugroho@klinikpratama.id',  '081210000006', 'Umum');
+(6, 5, 'dr. Fajar Nugroho, Sp.M',  'SIP-006/2024', 'fajar.nugroho@klinikpratama.id',  '081210000006', 'Spesialis');
 
 -- ---------------------------------------------------------------------
 -- 3. jadwal_praktik (8 baris)
@@ -195,11 +372,11 @@ INSERT INTO detail_resep (id_detail_resep, id_rekam, id_obat, jumlah, aturan_pak
 INSERT INTO pembayaran (id_pembayaran, id_kunjungan, tanggal_bayar, metode, total_tagihan, status_bayar) VALUES
 (1,  1,  '2026-08-05', 'Tunai',    68000.00, 'Lunas'),
 (2,  2,  '2026-08-05', 'Transfer', 143000.00, 'Lunas'),
-(3,  3,  '2026-08-06', 'QRIS',    213000.00, 'Lunas'),
+(3,  3,  '2026-08-06', 'BPJS',    213000.00, 'Lunas'),
 (4,  4,  NULL,         'Tunai',   155000.00, 'Belum Lunas'),
 (5,  5,  '2026-08-12', 'Tunai',    55000.00, 'Lunas'),
-(6,  6,  '2026-08-12', 'QRIS',     56000.00, 'Lunas'),
+(6,  6,  '2026-08-12', 'BPJS',     56000.00, 'Lunas'),
 (7,  7,  '2026-09-02', 'Transfer', 202000.00, 'Lunas'),
 (8,  8,  NULL,         'Transfer', 165000.00, 'Belum Lunas'),
 (9,  11, '2026-10-07', 'Tunai',    63000.00, 'Lunas'),
-(10, 12, NULL,         'QRIS',     85000.00, 'Belum Lunas');
+(10, 12, NULL,         'BPJS',     85000.00, 'Belum Lunas');
