@@ -28,8 +28,14 @@ sesi() {
 }
 
 ambil_stok() {
-  db -D klinik_pratama -N -B -e "SELECT stok FROM obat WHERE id_obat=1;" 2>/dev/null
+  local id="${1:-1}"
+  db -D klinik_pratama -N -B -e "SELECT stok FROM obat WHERE id_obat=$id;" 2>/dev/null
 }
+
+# Stok awal dicatat supaya demo mengembalikannya ke nilai semula,
+# berapa pun isi data contoh (dulu hardcode 200 dan 150).
+STOK1_AWAL=$(ambil_stok 1)
+STOK2_AWAL=$(ambil_stok 2)
 
 lapor() {
   printf '\n%s\n' "-------------------------------------------------------------"
@@ -152,5 +158,5 @@ fi
 
 # Kembalikan stok ke angka semula supaya percobaan bisa diulang.
 db -D klinik_pratama \
-  -e "UPDATE obat SET stok = 200 WHERE id_obat = 1; UPDATE obat SET stok = 150 WHERE id_obat = 2;" 2>/dev/null
-echo "Stok obat 1 dan 2 dikembalikan ke nilai semula."
+  -e "UPDATE obat SET stok = $STOK1_AWAL WHERE id_obat = 1; UPDATE obat SET stok = $STOK2_AWAL WHERE id_obat = 2;" 2>/dev/null
+echo "Stok obat 1 dan 2 dikembalikan ke nilai semula ($STOK1_AWAL dan $STOK2_AWAL)."

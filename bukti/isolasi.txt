@@ -1,0 +1,34 @@
+
+-------------------------------------------------------------
+BAGIAN 1. Tingkat isolasi READ COMMITTED
+-------------------------------------------------------------
+Stok awal obat 1: 100
+--- jejak sesi A ---
+A membaca pertama kali  : 100
+A membaca setelah B commit: 95
+--- jejak sesi B ---
+B mengubah stok menjadi  : 95
+B commit selesai
+
+-------------------------------------------------------------
+BAGIAN 2. Tingkat isolasi REPEATABLE READ
+-------------------------------------------------------------
+Stok obat 1 sebelum percobaan: 95
+--- jejak sesi A ---
+A membaca pertama kali  : 95
+A membaca setelah B commit: 95
+--- jejak sesi B ---
+B mengubah stok menjadi  : 90
+B commit selesai
+
+-------------------------------------------------------------
+BAGIAN 3. Deadlock dua transaksi
+-------------------------------------------------------------
+--- jejak sesi A ---
+A mengunci obat 1
+A mengunci obat 2
+--- jejak sesi B ---
+B mengunci obat 2
+ERROR 1213 (40001) at line 6: Deadlock found when trying to get lock; try restarting transaction
+KESIMPULAN: deadlock terdeteksi, satu transaksi dihentikan dengan galat 1213.
+Stok obat 1 dan 2 dikembalikan ke nilai semula (100 dan 40).

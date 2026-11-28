@@ -1,0 +1,19 @@
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Grants for petugas_klinik@%
+GRANT USAGE ON *.* TO `petugas_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.`dokter` TO `petugas_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.`jadwal_praktik` TO `petugas_klinik`@`%`
+GRANT SELECT, INSERT ON `klinik_pratama`.`kunjungan` TO `petugas_klinik`@`%`
+GRANT SELECT, INSERT ON `klinik_pratama`.`pasien` TO `petugas_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.`poli` TO `petugas_klinik`@`%`
+Grants for dokter_klinik@%
+GRANT USAGE ON *.* TO `dokter_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.* TO `dokter_klinik`@`%`
+GRANT INSERT, UPDATE ON `klinik_pratama`.`detail_resep` TO `dokter_klinik`@`%`
+GRANT INSERT, UPDATE ON `klinik_pratama`.`rekam_medis` TO `dokter_klinik`@`%`
+Grants for admin_klinik@%
+GRANT USAGE ON *.* TO `admin_klinik`@`%`
+GRANT ALL PRIVILEGES ON `klinik_pratama`.* TO `admin_klinik`@`%`
+---- Percobaan INSERT ke obat sebagai petugas_klinik (harus ditolak 1142) ---
+mysql: [Warning] Using a password on the command line interface can be insecure.
+ERROR 1142 (42000) at line 1: INSERT command denied to user 'petugas_klinik'@'localhost' for table 'obat'
