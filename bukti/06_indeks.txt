@@ -1,0 +1,34 @@
+mysql: [Warning] Using a password on the command line interface can be insecure.
+bukti
+--- EXPLAIN sebelum idx_pasien_nama ---
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	pasien	NULL	ALL	NULL	NULL	NULL	NULL	10	11.11	Using where
+1
+1
+bukti
+--- EXPLAIN sesudah idx_pasien_nama ---
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	pasien	NULL	range	idx_pasien_nama	idx_pasien_nama	402	NULL	1	100.00	Using index condition
+bukti
+--- EXPLAIN sebelum idx_kunjungan_tanggal ---
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	kunjungan	NULL	ALL	NULL	NULL	NULL	NULL	14	10.00	Using where
+1
+1
+bukti
+--- EXPLAIN sesudah idx_kunjungan_tanggal ---
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	kunjungan	NULL	ref	idx_kunjungan_tanggal	idx_kunjungan_tanggal	3	const	1	100.00	NULL
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment	Visible	Expression
+pasien	0	PRIMARY	1	id_pasien	A	10	NULL	NULL		BTREE			YES	NULL
+pasien	0	uq_pasien_nik	1	nik	A	10	NULL	NULL		BTREE			YES	NULL
+pasien	0	uq_pasien_email	1	email	A	10	NULL	NULL	YES	BTREE			YES	NULL
+pasien	1	idx_pasien_nama	1	nama_pasien	A	10	NULL	NULL		BTREE			YES	NULL
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment	Visible	Expression
+kunjungan	0	PRIMARY	1	id_kunjungan	A	14	NULL	NULL		BTREE			YES	NULL
+kunjungan	0	uq_kunjungan_antrean	1	id_jadwal	A	7	NULL	NULL		BTREE			YES	NULL
+kunjungan	0	uq_kunjungan_antrean	2	no_antrean	A	14	NULL	NULL		BTREE			YES	NULL
+kunjungan	0	uq_kunjungan_pasien	1	id_pasien	A	10	NULL	NULL		BTREE			YES	NULL
+kunjungan	0	uq_kunjungan_pasien	2	id_jadwal	A	14	NULL	NULL		BTREE			YES	NULL
+kunjungan	1	idx_kunjungan_tanggal	1	tanggal_kunjungan	A	7	NULL	NULL		BTREE			YES	NULL
+kunjungan	1	idx_kunjungan_tanggal	2	id_jadwal	A	7	NULL	NULL		BTREE			YES	NULL

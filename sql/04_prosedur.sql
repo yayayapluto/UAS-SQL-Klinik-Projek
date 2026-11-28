@@ -6,145 +6,124 @@
 -- Sumber  : PRD bagian 6 dan 8, panduan Kenzie
 -- Tautan  : ../../docs/PRD.md dan ../../docs/panduan-anggota-4-view-trigger-prosedur.md
 -- =====================================================================
--- Berkas ini hanya berisi komentar. Tidak ada pernyataan SQL yang bisa
--- dieksekusi. Isinya adalah rancangan dua prosedur simpan untuk Sistem
--- Informasi Klinik Pratama.
+-- Dua prosedur simpan untuk Sistem Informasi Klinik Pratama. Keduanya
+-- bukti sifat atomicity: seluruh langkah berjalan dalam satu transaksi,
+-- dan kegagalan di tengah jalan tidak meninggalkan baris setengah jadi.
+-- Keduanya memakai EXIT HANDLER FOR SQLEXCEPTION yang menjalankan
+-- ROLLBACK lalu RESIGNAL.
 --
--- Kedua prosedur menjadi bukti sifat atomicity pada bab transaksi: seluruh
--- langkahnya berjalan dalam satu transaksi, dan kegagalan di tengah jalan
--- tidak meninggalkan baris setengah jadi.
---
--- Daftar TODO Kenzie. Ganti [ ] menjadi [x] setelah prosedur diuji.
--- [ ] sp_daftar_kunjungan
--- [ ] sp_bayar_kunjungan
--- [ ] kedua prosedur memakai transaksi, handler rollback, dan dapat diulang
+-- Daftar TODO Agit. Ganti [ ] menjadi [x] setelah prosedur diuji.
+-- [x] sp_daftar_kunjungan
+-- [x] sp_bayar_kunjungan
+-- [x] kedua prosedur memakai transaksi, handler rollback, dan dapat diulang
+
+USE klinik_pratama;
 
 -- ---------------------------------------------------------------------
--- 1. Aturan pengulangan
+-- 1. Prosedur sp_daftar_kunjungan
+--    Masuk: p_id_pasien, p_id_jadwal. Hasil dikembalikan lewat SELECT
+--    (id_kunjungan_baru, no_antrean) supaya pemanggilan cukup dua
+--    argumen, seperti yang dipakai verify.sh bagian G dan Uji 7.
+--    Kuota TIDAK diperiksa di sini, diserahkan ke
+--    trg_cek_kuota_jadwal (aturan bisnis 1).
 -- ---------------------------------------------------------------------
--- Setiap prosedur didahului DROP PROCEDURE IF EXISTS dengan nama yang
--- sama, sehingga skrip aman dijalankan berulang di database yang sama.
--- Prosedur daftar ditulis lebih dulu karena dipakai pada alur Uji 7
--- sebelum prosedur bayar dipanggil.
---
--- DELIMITER hanya diperlukan klien mysql untuk membaca badan prosedur
--- yang memuat tanda titik koma. DELIMITER bukan perintah SQL dan tidak
--- dikirim ke server. Sesudah badan prosedur selesai, penanda dikembalikan
--- ke titik koma supaya berkas berikutnya terbaca normal.
+DROP PROCEDURE IF EXISTS sp_daftar_kunjungan;
+DELIMITER //
+CREATE PROCEDURE sp_daftar_kunjungan(
+    IN p_id_pasien INT,
+    IN p_id_jadwal INT
+)
+BEGIN
+    DECLARE v_tanggal DATE;
+    DECLARE v_antrean INT;
+    DECLARE v_id_kunjungan INT;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    START TRANSACTION;
+    SELECT tanggal INTO v_tanggal FROM jadwal_praktik WHERE id_jadwal = p_id_jadwal;
+    IF v_tanggal IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Jadwal tidak ditemukan';
+    END IF;
+    IF v_tanggal < CURDATE() THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Jadwal sudah lewat, tidak bisa didaftari';
+    END IF;
+    SELECT COALESCE(MAX(no_antrean), 0) + 1 INTO v_antrean
+        FROM kunjungan WHERE id_jadwal = p_id_jadwal;
+    INSERT INTO kunjungan (id_pasien, id_jadwal, tanggal_kunjungan, no_antrean, status_kunjungan)
+        VALUES (p_id_pasien, p_id_jadwal, v_tanggal, v_antrean, 'Menunggu');
+    SET v_id_kunjungan = LAST_INSERT_ID();
+    COMMIT;
+    SELECT v_id_kunjungan AS id_kunjungan_baru, v_antrean AS no_antrean;
+END //
+DELIMITER ;
 
 -- ---------------------------------------------------------------------
--- 2. Prosedur sp_daftar_kunjungan
+-- 2. Prosedur sp_bayar_kunjungan
+--    Masuk: p_id_kunjungan, p_metode. Hasil dikembalikan lewat SELECT
+--    (total_dibayar) supaya pemanggilan cukup dua argumen, seperti yang
+--    dipakai verify.sh bagian G dan Uji 7.
+--    Total dihitung sendiri dari tindakan + obat (aturan bisnis 6),
+--    bukan disalin dari masukan pemanggil.
 -- ---------------------------------------------------------------------
--- Parameter masuk: p_id_pasien dan p_id_jadwal.
--- Keluaran: id_kunjungan_baru dan no_antrean.
--- Tujuan: mendaftarkan pasien ke satu sesi jadwal praktik.
---
--- Langkah:
--- 1. Buka transaksi.
--- 2. Ambil tanggal jadwal dari jadwal_praktik memakai id_jadwal. Bila
---    tidak ada baris, hentikan dengan SQLSTATE 45000 dan pesan
---    Jadwal tidak ditemukan.
--- 3. Bila tanggal jadwal lebih awal dari CURDATE(), tolak dengan pesan
---    Jadwal sudah lewat, tidak bisa didaftari.
--- 4. Hitung nomor antrean berikutnya untuk jadwal itu dengan
---    COALESCE(MAX(no_antrean), 0) + 1, sehingga jadwal tanpa kunjungan
---    mulai dari 1.
--- 5. Simpan baris kunjungan dengan tanggal_kunjungan sama dengan tanggal
---    jadwal, nomor antrean hasil langkah 4, dan status Menunggu.
--- 6. COMMIT.
--- 7. Kembalikan id_kunjungan_baru dari LAST_INSERT_ID dan no_antrean
---    yang baru dihitung.
---
--- Kuota tidak diperiksa di prosedur. Penjagaan kuota diserahkan ke
--- trg_cek_kuota_jadwal, sesuai aturan bisnis nomor 1 di
--- ../../docs/PRD.md bagian 6. Menulis pemeriksaan yang sama di dua tempat
--- membuat pesan galat berbeda dan sulit diuji.
---
--- Aturan bisnis nomor 3, satu pasien hanya sekali pada satu sesi, tetap
--- dijaga uq_kunjungan_pasien di tingkat tabel.
---
--- Penanganan galat: EXIT HANDLER FOR SQLEXCEPTION menjalankan ROLLBACK
--- lalu RESIGNAL, sehingga pesan asli tetap sampai ke pemanggil dan tidak
--- ada kunjungan yang tersimpan ketika langkah mana pun gagal.
---
--- Kontrak lengkap ada di ../../docs/PRD.md bagian 8.3.
-
--- ---------------------------------------------------------------------
--- 3. Prosedur sp_bayar_kunjungan
--- ---------------------------------------------------------------------
--- Parameter masuk: p_id_kunjungan dan p_metode.
--- Keluaran: total_dibayar.
--- Tujuan: menghitung tagihan satu kunjungan lalu menyimpan pembayarannya.
---
--- Langkah:
--- 1. Buka transaksi.
--- 2. Hitung COUNT baris pembayaran untuk id_kunjungan itu. Bila lebih
---    dari nol, tolak dengan SQLSTATE 45000 dan pesan
---    Kunjungan sudah dibayar.
--- 3. Hitung total dari dua sumber:
---    jumlah detail_tindakan dikali tarif tindakan, ditambah
---    jumlah detail_resep dikali harga obat.
---    Keduanya dibungkus COALESCE ke 0 supaya kunjungan yang hanya punya
---    tindakan atau hanya punya resep tetap menghasilkan angka.
--- 4. Simpan baris pembayaran dengan tanggal_bayar CURDATE, metode dari
---    parameter, total_tagihan hasil langkah 3, dan status Lunas.
--- 5. COMMIT.
--- 6. Kembalikan total_dibayar.
---
--- Aturan bisnis nomor 5, satu kunjungan paling banyak satu baris
--- pembayaran, dijaga uq_pembayaran_kunjungan. Pemeriksaan langkah 2
--- membuat penolakan terjadi lebih awal dengan pesan yang jelas, bukan
--- sebagai galat kunci unik.
---
--- Aturan bisnis nomor 6 menyatakan total tagihan dihitung sendiri oleh
--- prosedur ini, bukan disalin dari masukan pemanggil.
---
--- Penanganan galat sama dengan prosedur daftar: ROLLBACK lalu RESIGNAL.
--- Pembayaran yang gagal di tengah tidak meninggalkan baris dengan total
--- nol atau status setengah jadi.
---
--- Kontrak lengkap ada di ../../docs/PRD.md bagian 8.3.
-
--- ---------------------------------------------------------------------
--- 4. Catatan bersama
--- ---------------------------------------------------------------------
--- Keduanya memakai urutan START TRANSACTION, pemeriksaan, penulisan,
--- COMMIT, lalu SELECT keluaran.
---
--- SIGNAL dipakai untuk penolakan aturan bisnis dengan SQLSTATE 45000,
--- sehingga teks pesan yang dicari verify.sh dan pengujian selalu sama.
---
--- Seluruh nama tabel, kolom, dan constraint mengikuti
--- ../../docs/PRD.md bagian 5. Tipe data dan detail tipe tidak disalin di
--- berkas ini.
---
--- Rincian objek: sp_daftar_kunjungan dan sp_bayar_kunjungan.
+DROP PROCEDURE IF EXISTS sp_bayar_kunjungan;
+DELIMITER //
+CREATE PROCEDURE sp_bayar_kunjungan(
+    IN p_id_kunjungan INT,
+    IN p_metode VARCHAR(20)
+)
+BEGIN
+    DECLARE v_sudah INT;
+    DECLARE v_total DECIMAL(12,2);
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    START TRANSACTION;
+    SELECT COUNT(*) INTO v_sudah FROM pembayaran WHERE id_kunjungan = p_id_kunjungan;
+    IF v_sudah > 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Kunjungan sudah dibayar';
+    END IF;
+    SELECT
+        COALESCE((SELECT SUM(dt.jumlah * t.tarif)
+                    FROM detail_tindakan dt
+                    JOIN tindakan t ON t.id_tindakan = dt.id_tindakan
+                   WHERE dt.id_kunjungan = p_id_kunjungan), 0)
+        +
+        COALESCE((SELECT SUM(dr.jumlah * o.harga)
+                    FROM detail_resep dr
+                    JOIN rekam_medis rm ON rm.id_rekam = dr.id_rekam
+                    JOIN obat o ON o.id_obat = dr.id_obat
+                   WHERE rm.id_kunjungan = p_id_kunjungan), 0)
+        INTO v_total;
+    INSERT INTO pembayaran (id_kunjungan, tanggal_bayar, metode, total_tagihan, status_bayar)
+        VALUES (p_id_kunjungan, CURDATE(), p_metode, v_total, 'Lunas');
+    COMMIT;
+    SELECT v_total AS total_dibayar;
+END //
+DELIMITER ;
 
 -- ---------------------------------------------------------------------
 -- Pemeriksaan
 -- ---------------------------------------------------------------------
--- Setelah 01_struktur.sql dan 02_data.sql dimuat, jalankan dari akar repo:
---
--- 1. bash tools/reset-db.sh
---    Harapan: seluruh berkas 01 sampai 06 selesai tanpa galat, dan kedua
---    prosedur muncul pada daftar rutin database klinik_pratama.
---
--- 2. bash tools/verify.sh
---    Harapan: 34 pemeriksaan lulus. Bagian G menghasilkan 3 pemeriksaan:
---    - total tagihan sama dengan hitungan manual: 0 baris selisih.
---    - membayar dua kali ditolak dengan pesan Kunjungan sudah dibayar.
---    - insert yang gagal tidak menyisakan baris: 0 baris bertotal nol.
---
--- 3. Uji 7 pada 07_pengujian.sql
---    Harapan: pendaftaran pada jadwal baru menghasilkan no_antrean 1.
---    Pembayaran menghasilkan total_tagihan 155000, yaitu 150000 biaya
---    pembersihan karang gigi ditambah 5000 harga sepuluh tablet
---    Paracetamol, dengan status Lunas.
---
--- 4. Uji 8 pada 07_pengujian.sql
---    Harapan: pemanggilan kedua ditolak dengan pesan
---    Kunjungan sudah dibayar, dan jumlah baris pembayaran untuk kunjungan
---    itu tetap satu.
---
--- 5. Pemanggilan dengan id_jadwal yang tidak ada
---    Harapan: ditolak dengan pesan Jadwal tidak ditemukan.
+--   bash tools/reset-db.sh
+--     Harapan: seluruh berkas 01 sampai 06 selesai tanpa galat, dan
+--     kedua prosedur muncul pada daftar rutin database klinik_pratama.
+--   bash tools/verify.sh
+--     Harapan: 34 pemeriksaan lulus. Bagian G: total tagihan sama
+--     dengan hitungan manual (0 baris selisih), membayar dua kali
+--     ditolak dengan pesan Kunjungan sudah dibayar, dan insert yang
+--     gagal tidak menyisakan baris (0 baris bertotal nol).
+--   Uji 7 pada 07_pengujian.sql
+--     Harapan: pendaftaran pada jadwal baru menghasilkan no_antrean 1.
+--     Pembayaran menghasilkan total_tagihan 155000, yaitu 150000 biaya
+--     pembersihan karang gigi ditambah 5000 harga sepuluh tablet
+--     Paracetamol, dengan status Lunas.
+--   Uji 8 pada 07_pengujian.sql
+--     Harapan: pemanggilan kedua ditolak dengan pesan
+--     Kunjungan sudah dibayar, dan jumlah baris pembayaran untuk
+--     kunjungan itu tetap satu.
+-- =====================================================================

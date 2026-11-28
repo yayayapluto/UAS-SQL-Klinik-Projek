@@ -1,0 +1,45 @@
+== A. Struktur dan isi tabel ==
+  [OK]   jumlah tabel di klinik_pratama                       = 11
+  [OK]   jumlah view di klinik_pratama                        = 2
+  [OK]   isi tabel poli minimal 5 baris                       = 5 baris
+  [OK]   isi tabel dokter minimal 5 baris                     = 6 baris
+  [OK]   isi tabel jadwal_praktik minimal 5 baris             = 8 baris
+  [OK]   isi tabel pasien minimal 5 baris                     = 10 baris
+  [OK]   isi tabel kunjungan minimal 5 baris                  = 14 baris
+  [OK]   isi tabel rekam_medis minimal 5 baris                = 10 baris
+  [OK]   isi tabel tindakan minimal 5 baris                   = 6 baris
+  [OK]   isi tabel detail_tindakan minimal 5 baris            = 16 baris
+  [OK]   isi tabel obat minimal 5 baris                       = 8 baris
+  [OK]   isi tabel detail_resep minimal 5 baris               = 12 baris
+  [OK]   isi tabel pembayaran minimal 5 baris                 = 10 baris
+== B. Keutuhan relasi (tidak ada foreign key yatim) ==
+  [OK]   jumlah baris dengan relasi yatim                     = 0
+== C. Aturan bisnis tercermin di data ==
+  [OK]   sisa kuota jadwal 7 (kuota 4)                        = 0
+  [OK]   kunjungan berstatus Batal                            = 2
+  [OK]   kunjungan berstatus Menunggu                         = 2
+  [OK]   pembayaran Belum Lunas                               = 3
+  [OK]   baris view v_kunjungan_lengkap                       = 14
+  [OK]   imt rekam medis 1 (72 kg, 170 cm)                    = 24.9
+== D. Indeks dipakai optimizer ==
+  [OK]   EXPLAIN nama_pasien LIKE 'A%'                        = idx_pasien_nama
+  [OK]   EXPLAIN tanggal_kunjungan 2026-09-10                 = idx_kunjungan_tanggal
+== E. Penjagaan data menolak masukan salah ==
+  [OK]   nomor antrean ganda ditolak                          ditolak: ERROR 1062 (23000) at line 1: Duplicate 
+  [OK]   pasien tidak terdaftar ditolak                       ditolak: ERROR 1452 (23000) at line 1: Cannot add
+  [OK]   suhu 50 derajat ditolak                              ditolak: ERROR 3819 (HY000) at line 1: Check cons
+  [OK]   pendaftaran melewati kuota ditolak                   ditolak: ERROR 1644 (45000) at line 1: Kuota jadw
+  [OK]   jadwal dokter bentrok ditolak                        ditolak: ERROR 1644 (45000) at line 1: Jadwal dok
+  [OK]   resep melebihi stok ditolak                          ditolak: ERROR 1644 (45000) at line 1: Stok obat 
+== F. Hak akses pengguna ==
+  [OK]   GRANT petugas_klinik                                 sesuai
+  [OK]   GRANT dokter_klinik                                  sesuai
+  [OK]   petugas_klinik menulis ke obat                       ditolak 1142
+== G. Transaksi berhasil seluruhnya atau tidak sama sekali ==
+  [OK]   total tagihan sama dengan hitungan manual            = 0
+  [OK]   membayar dua kali ditolak                            ditolak: ERROR 1644 (45000) at line 1: Kunjungan 
+  [OK]   insert yang gagal tidak menyisakan baris             = 0
+
+==============================================
+Lulus: 34   Gagal: 0
+SEMUA PEMERIKSAAN LULUS

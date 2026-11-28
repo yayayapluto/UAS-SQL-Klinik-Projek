@@ -1,0 +1,75 @@
+mysql: [Warning] Using a password on the command line interface can be insecure.
+uji
+--- Uji 1: antrean ganda ---
+ERROR 1062 (23000) at line 44: Duplicate entry '2-1' for key 'kunjungan.uq_kunjungan_antrean'
+uji
+--- Uji 2: pasien tidak terdaftar ---
+ERROR 1452 (23000) at line 52: Cannot add or update a child row: a foreign key constraint fails (`klinik_pratama`.`kunjungan`, CONSTRAINT `fk_kunjungan_pasien` FOREIGN KEY (`id_pasien`) REFERENCES `pasien` (`id_pasien`) ON DELETE RESTRICT ON UPDATE CASCADE)
+uji
+--- Uji 3: suhu 50 derajat ---
+ERROR 3819 (HY000) at line 60: Check constraint 'ck_rekam_suhu' is violated.
+uji
+--- Uji 4: kuota jadwal penuh ---
+ERROR 1644 (45000) at line 67: Kuota jadwal sudah penuh
+uji
+--- Uji 5: jadwal dokter bentrok ---
+ERROR 1644 (45000) at line 75: Jadwal dokter bentrok
+uji
+--- Uji 6: resep melebihi stok ---
+ERROR 1644 (45000) at line 83: Stok obat tidak cukup
+uji
+--- Uji 7: alur normal daftar, periksa, bayar ---
+id_kunjungan_baru	no_antrean
+20	1
+total_dibayar
+155000.00
+id_pembayaran	id_kunjungan	total_tagihan	status_bayar
+12	20	155000.00	Lunas
+periksa	total_manual
+Hitungan manual (tindakan + obat) kunjungan uji:	155000.00
+uji
+--- Uji 8: pembayaran kedua ditolak ---
+ERROR 1644 (45000) at line 123: Kunjungan sudah dibayar
+jumlah_pembayaran_kunjungan_uji
+1
+uji
+--- Uji 9: view v_kunjungan_lengkap ---
+jumlah_baris_view
+15
+id_kunjungan	nama_pasien	nama_dokter	nama_poli	status_bayar
+1	Ahmad Fauzi	dr. Andi Pratama	Poli Umum	Lunas
+2	Budi Hartono	dr. Andi Pratama	Poli Umum	Lunas
+3	Citra Dewi	drg. Citra Lestari	Poli Gigi	Lunas
+4	Dian Kusuma	drg. Citra Lestari	Poli Gigi	Belum Lunas
+5	Eka Putra	dr. Dewi Anggraini, Sp.A	Poli Anak	Lunas
+6	Fitri Handayani	dr. Dewi Anggraini, Sp.A	Poli Anak	Lunas
+7	Gilang Ramadhan	dr. Eko Prasetyo, Sp.PD	Poli Penyakit Dalam	Lunas
+8	Hana Pertiwi	dr. Eko Prasetyo, Sp.PD	Poli Penyakit Dalam	Belum Lunas
+9	Indra Wijaya	dr. Budi Santoso	Poli Umum	Belum Ada Tagihan
+10	Joko Susilo	dr. Fajar Nugroho, Sp.M	Poli Mata	Belum Ada Tagihan
+11	Citra Dewi	dr. Andi Pratama	Poli Umum	Lunas
+12	Dian Kusuma	dr. Andi Pratama	Poli Umum	Belum Lunas
+13	Gilang Ramadhan	dr. Andi Pratama	Poli Umum	Belum Ada Tagihan
+14	Hana Pertiwi	dr. Andi Pratama	Poli Umum	Belum Ada Tagihan
+20	Joko Susilo	drg. Citra Lestari	Poli Gigi	Lunas
+uji
+--- Uji 10: hak akses petugas ---
+Grants for petugas_klinik@%
+GRANT USAGE ON *.* TO `petugas_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.`dokter` TO `petugas_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.`jadwal_praktik` TO `petugas_klinik`@`%`
+GRANT SELECT, INSERT ON `klinik_pratama`.`kunjungan` TO `petugas_klinik`@`%`
+GRANT SELECT, INSERT ON `klinik_pratama`.`pasien` TO `petugas_klinik`@`%`
+GRANT SELECT ON `klinik_pratama`.`poli` TO `petugas_klinik`@`%`
+uji
+--- Pembersihan data uji ---
+jumlah_kunjungan
+14
+jumlah_pembayaran
+10
+jumlah_jadwal
+8
+jumlah_rekam_medis
+10
+id_obat	nama_obat	stok
+1	Paracetamol 500mg	100

@@ -6,174 +6,82 @@
 -- Sumber  : PRD bagian 8 dan 9, panduan Kafka
 -- Tautan  : ../../docs/PRD.md dan ../../docs/panduan-anggota-5-keamanan-indeks.md
 -- =====================================================================
--- Berkas ini hanya berisi komentar. Tidak ada pernyataan SQL yang bisa
--- dieksekusi. Isinya adalah rancangan dua indeks beserta bukti rencana
--- eksekusi sebelum dan sesudah indeks terpasang.
+-- Dua indeks beserta bukti rencana eksekusi sebelum dan sesudah indeks
+-- terpasang. MySQL 8.0.16 tidak punya DROP INDEX IF EXISTS, jadi
+-- pembuatan indeks didahului pemeriksaan keberadaan nama indeks pada
+-- information_schema.statistics; tanpa itu reset-db.sh kedua kali gagal
+-- dengan galat 1061 Duplicate key name.
 --
--- Daftar TODO Kafka. Ganti [ ] menjadi [x] setelah indeks dibuktikan.
--- [ ] idx_pasien_nama pada pasien(nama_pasien)
--- [ ] idx_kunjungan_tanggal pada kunjungan(tanggal_kunjungan, id_jadwal)
--- [ ] EXPLAIN sebelum dan sesudah untuk kedua query
--- [ ] SHOW INDEX dan bukti ke verify.sh bagian D
+-- Daftar TODO Kenzie. Ganti [ ] menjadi [x] setelah indeks dibuktikan.
+-- [x] idx_pasien_nama pada pasien(nama_pasien)
+-- [x] idx_kunjungan_tanggal pada kunjungan(tanggal_kunjungan, id_jadwal)
+-- [x] EXPLAIN sebelum dan sesudah untuk kedua query
+-- [x] SHOW INDEX dan bukti ke verify.sh bagian D
+
+USE klinik_pratama;
 
 -- ---------------------------------------------------------------------
--- 1. Dua indeks dan query yang dilayani
+-- 1. idx_pasien_nama
+--    Melayani pencarian awalan nama: nama_pasien LIKE 'A%'.
+--    Sebelum: type ALL, key NULL, rows 10. Sesudah: type range,
+--    key idx_pasien_nama, rows 1.
 -- ---------------------------------------------------------------------
--- idx_pasien_nama       pada pasien (nama_pasien).
---   Melayani pencarian awalan nama, syarat nama_pasien LIKE 'A%'.
--- idx_kunjungan_tanggal pada kunjungan (tanggal_kunjungan, id_jadwal).
---   Melayani penyaringan tanggal, syarat tanggal_kunjungan bernilai satu
---   tanggal, dan laporan yang menyaring tanggal sekaligus jadwal.
---
--- Nama, tabel, kolom, dan urutan kolom mengikuti PRD bagian 8.5 dan
--- panduan Kafka Milestone 5. Tipe data kolom tidak disalin di sini, lihat
--- ../../docs/PRD.md bagian 5.2.
+SELECT '--- EXPLAIN sebelum idx_pasien_nama ---' AS bukti;
+EXPLAIN SELECT * FROM pasien WHERE nama_pasien LIKE 'A%';
+
+SET @idx := (SELECT COUNT(*) FROM information_schema.statistics
+    WHERE table_schema = 'klinik_pratama' AND table_name = 'pasien'
+      AND index_name = 'idx_pasien_nama');
+SET @sql := IF(@idx > 0, 'DROP INDEX idx_pasien_nama ON pasien', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE INDEX idx_pasien_nama ON pasien (nama_pasien);
+
+SELECT '--- EXPLAIN sesudah idx_pasien_nama ---' AS bukti;
+EXPLAIN SELECT * FROM pasien WHERE nama_pasien LIKE 'A%';
 
 -- ---------------------------------------------------------------------
--- 2. Aturan pengulangan
+-- 2. idx_kunjungan_tanggal
+--    Melayani penyaringan tanggal: tanggal_kunjungan = '2026-09-10'.
+--    Kolom tanggal diletakkan lebih dulu karena dipakai sendirian pada
+--    penyaringan; kolom kedua melayani laporan tanggal sekaligus jadwal.
+--    Sebelum: type ALL, key NULL, rows 14. Sesudah: type ref,
+--    key idx_kunjungan_tanggal, rows 1.
 -- ---------------------------------------------------------------------
--- MySQL 8.0.16 tidak punya DROP INDEX IF EXISTS. Karena itu pembuatan
--- indeks didahului pemeriksaan keberadaan nama indeks pada
--- information_schema.statistics untuk skema klinik_pratama.
---
--- Langkah yang dipakai versi final:
--- 1. Hitung baris statistik dengan nama indeks yang dituju.
--- 2. Susun perintah DROP INDEX lewat PREPARE hanya bila hitungan itu
---    lebih dari nol, lalu EXECUTE dan DEALLOCATE PREPARE.
--- 3. Buat indeks memakai perintah CREATE INDEX.
--- 4. Ambil EXPLAIN sesudahnya sebagai bukti optimizer memakai indeks.
---
--- Tanpa langkah 1 dan 2, reset-db.sh kedua kali gagal dengan galat 1061
--- Duplicate key name. Urutan ini berlaku terpisah untuk kedua indeks,
--- jadi indeks yang sudah benar tidak ikut dibuang saat yang lain dibuat.
+SELECT '--- EXPLAIN sebelum idx_kunjungan_tanggal ---' AS bukti;
+EXPLAIN SELECT * FROM kunjungan WHERE tanggal_kunjungan = '2026-09-10';
+
+SET @idx := (SELECT COUNT(*) FROM information_schema.statistics
+    WHERE table_schema = 'klinik_pratama' AND table_name = 'kunjungan'
+      AND index_name = 'idx_kunjungan_tanggal');
+SET @sql := IF(@idx > 0, 'DROP INDEX idx_kunjungan_tanggal ON kunjungan', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+CREATE INDEX idx_kunjungan_tanggal ON kunjungan (tanggal_kunjungan, id_jadwal);
+
+SELECT '--- EXPLAIN sesudah idx_kunjungan_tanggal ---' AS bukti;
+EXPLAIN SELECT * FROM kunjungan WHERE tanggal_kunjungan = '2026-09-10';
 
 -- ---------------------------------------------------------------------
--- 3. idx_pasien_nama
+-- 3. Bukti struktur indeks
 -- ---------------------------------------------------------------------
--- Tabel  : pasien.
--- Kolom  : nama_pasien.
--- Query  : SELECT pada pasien dengan syarat nama_pasien LIKE 'A%'.
---
--- Pola awalan tanpa wildcard di depan masih bisa dibaca optimizer sebagai
--- rentang, berbeda dengan pola '%A%' yang berakhir pemindaian penuh.
--- Kolom nama_pasien memakai collation utf8mb4_unicode_ci, jadi pencarian
--- tidak membedakan huruf besar kecil. Indeks mewarisi collation kolom.
---
--- Rencana eksekusi sebelum indeks:
---   type  : ALL
---   key   : NULL
---   rows  : 10, sejumlah baris pasien pada PRD bagian 9.
---
--- Rencana eksekusi sesudah indeks:
---   type  : range
---   key   : idx_pasien_nama
---   rows  : 1, hanya baris berawalan A.
---
--- Angka rows adalah perkiraan optimizer dan bisa berbeda sedikit antar
--- versi server. Yang menjadi kontrak adalah type berubah dari ALL menjadi
--- range dan key berisi idx_pasien_nama.
-
--- ---------------------------------------------------------------------
--- 4. idx_kunjungan_tanggal
--- ---------------------------------------------------------------------
--- Tabel  : kunjungan.
--- Kolom  : tanggal_kunjungan lalu id_jadwal.
--- Query  : SELECT pada kunjungan dengan syarat tanggal_kunjungan sama
---          dengan satu tanggal, misalnya 2026-09-10.
---
--- Kolom tanggal diletakkan lebih dulu karena dipakai sendirian pada
--- penyaringan. Indeks gabungan hanya terpakai penuh bila kolom paling kiri
--- ikut disaring, jadi urutan ini yang benar untuk query tanggal. Kolom
--- kedua melayani laporan yang menyaring tanggal sekaligus jadwal tanpa
--- perlu indeks tambahan.
---
--- Rencana eksekusi sebelum indeks:
---   type  : ALL
---   key   : NULL
---   rows  : 14, sejumlah baris kunjungan pada PRD bagian 9.
---
--- Rencana eksekusi sesudah indeks:
---   type  : ref
---   key   : idx_kunjungan_tanggal
---   rows  : 3, perkiraan kunjungan pada satu tanggal.
---
--- Sama seperti indeks pertama, kontraknya adalah key berisi nama indeks
--- dan type tidak lagi ALL.
-
--- ---------------------------------------------------------------------
--- 5. Membandingkan rencana sebelum dan sesudah
--- ---------------------------------------------------------------------
--- Perbandingan dilakukan pada database hasil 01_struktur.sql dan
--- 02_data.sql, sebelum indeks dibuat dan sesudahnya. Kolom yang dibaca
--- dari EXPLAIN:
--- 1. type, menunjukkan cara akses tabel.
--- 2. possible_keys, daftar indeks yang dipertimbangkan.
--- 3. key, indeks yang benar benar dipakai, bernilai NULL bila tidak ada.
--- 4. rows, perkiraan baris yang diperiksa.
---
--- Hasil yang diharapkan pada kedua query uji:
---   idx_pasien_nama       : ALL dan NULL menjadi range dan
---                           idx_pasien_nama.
---   idx_kunjungan_tanggal : ALL dan NULL menjadi ref dan
---                           idx_kunjungan_tanggal.
---
--- Bila key masih NULL sesudah indeks dibuat, penyebab yang paling sering
--- adalah nama kolom pada syarat berbeda, penambahan fungsi di sekitar
--- kolom, atau wildcard di awal pola. verify.sh bagian D membaca kolom key
--- dan gagal bila isinya NULL.
-
--- ---------------------------------------------------------------------
--- 6. Bukti struktur indeks
--- ---------------------------------------------------------------------
--- SHOW INDEX dijalankan pada kedua tabel sesudah pembuatan.
---
--- SHOW INDEX FROM pasien
---   Harapan: PRIMARY pada id_pasien dan satu baris idx_pasien_nama dengan
---   Seq_in_index 1 pada kolom nama_pasien.
---
--- SHOW INDEX FROM kunjungan
---   Harapan: PRIMARY pada id_kunjungan, indeks unique milik kunci
---   kunjungan, indeks otomatis milik kunci tamu, dan idx_kunjungan_tanggal
---   dengan Seq_in_index 1 pada tanggal_kunjungan serta Seq_in_index 2
---   pada id_jadwal.
---
--- Jumlah baris idx_kunjungan_tanggal pada SHOW INDEX harus dua. Bila
--- hanya satu, kolom kedua tidak ikut terpasang dan urutan kolom perlu
--- diperiksa ulang.
-
--- ---------------------------------------------------------------------
--- 7. Ringkasan objek
--- ---------------------------------------------------------------------
--- Indeks: idx_pasien_nama, idx_kunjungan_tanggal.
--- Kedua nama persis seperti yang diperiksa verify.sh bagian D dan dicatat
--- di ../../docs/PRD.md bagian 5.4 dan 8.5. Tidak ada indeks lain yang
--- ditambahkan berkas ini.
+SHOW INDEX FROM pasien;
+SHOW INDEX FROM kunjungan;
 
 -- ---------------------------------------------------------------------
 -- Pemeriksaan
 -- ---------------------------------------------------------------------
--- Setelah 01_struktur.sql dan 02_data.sql dimuat, jalankan dari akar repo:
---
--- 1. bash tools/reset-db.sh
---    Harapan: seluruh berkas 01 sampai 06 selesai tanpa galat, database
---    klinik_pratama berisi 2 indeks.
---
--- 2. bash tools/reset-db.sh sekali lagi
---    Harapan: tetap tanpa galat dan tanpa pesan 1061 Duplicate key name.
---    Ini membuktikan bagian pembuangan indeks bekerja.
---
--- 3. bash tools/verify.sh
---    Harapan: 34 pemeriksaan lulus, termasuk bagian D dua pemeriksaan
---    yang membaca kolom key dari EXPLAIN untuk kedua indeks.
---
--- 4. EXPLAIN atas query uji bagian 3 dan bagian 4
---    Harapan: key berisi idx_pasien_nama dan idx_kunjungan_tanggal,
---    bukan NULL, dan type bukan ALL.
---
--- 5. SHOW INDEX pada pasien dan kunjungan
---    Harapan: kedua indeks tampil dengan kolom dan urutan seperti bagian 6.
---
--- Untuk berkas ini khususnya, cukup dipastikan isinya hanya komentar:
---   grep -v '^--' 06_indeks.sql | grep -v '^$'
---   Keluaran diharapkan: kosong, artinya tidak ada baris pernyataan aktif.
+--   bash tools/reset-db.sh
+--     Harapan: seluruh berkas 01 sampai 06 selesai tanpa galat,
+--     database klinik_pratama berisi 2 indeks.
+--   bash tools/reset-db.sh sekali lagi
+--     Harapan: tetap tanpa galat dan tanpa pesan 1061 Duplicate key
+--     name. Ini membuktikan bagian pembuangan indeks bekerja.
+--   bash tools/verify.sh
+--     Harapan: 34 pemeriksaan lulus, termasuk bagian D dua pemeriksaan
+--     yang membaca kolom key dari EXPLAIN untuk kedua indeks.
 -- =====================================================================
